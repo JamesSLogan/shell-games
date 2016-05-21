@@ -4,28 +4,39 @@
 #                         Variable Initializations                            #
 ###############################################################################
 
-$black="\e[30m";
-$red="\e[31m";
-$green="\e[32m";
-$yellow="\e[33m";
-$blue="\e[34m";
-$purple="\e[35m";
-$cyan="\e[36m";
-$bold="\e[1m";
-$reset="\e[0m";
+use strict;
+use warnings;
+use sigtrap 'handler' => \&exit_game, 'INT';
+use Time::HiRes qw(usleep gettimeofday);
 
-use sigtrap 'handler' => \&end_game, 'INT';
+my $black="\e[30m";
+my $red="\e[31m";
+my $green="\e[32m";
+my $yellow="\e[33m";
+my $blue="\e[34m";
+my $purple="\e[35m";
+my $cyan="\e[36m";
+my $bold="\e[1m";
+my $reset="\e[0m";
 
 open(TTY, "+</dev/tty") or die "no tty: $!";
 system "stty  cbreak </dev/tty >/dev/tty 2>&1";
-#system("stty -echo");
+system("stty -echo");
 
-$DICTIONARY="/usr/games/words.txt";
+my $DICTIONARY="/usr/games/words.txt";
 
 open (TMP, $DICTIONARY);
-@WORDS = <TMP>;
+my @WORDS = <TMP>;
 close (TMP);
-$NUM_WORDS = @WORDS;
+my $NUM_WORDS = @WORDS;
+
+print "\e[8;40;80;t";
+
+# Game setup
+my @active=();
+my $alive=1;
+my $input="";
+
 
 ###############################################################################
 #                              Main functions                                 #
@@ -33,24 +44,36 @@ $NUM_WORDS = @WORDS;
 
 # Main
 sub main {
-	&setup;
 	&run_game;
 	&end_game;
-}
-
-sub setup {
-	@active=();
-	$alive=1;
 }
 
 sub run_game {
 
 	while ( $alive ) {
-		# Add word to array of active words.
-		$word = &generate_word; chomp $word;
+		# Add a word to array of active words.
+		my $word = &generate_word; chomp $word;
 		push ( @active, $word );
 
-		print "@active\n";
+		# Print with new word
+		print join("\n", reverse @active),"\n\n";
+		
+		# Make sure game isn't over
+		if ( scalar(@active) > 10 ) {
+			$alive=0;
+		}
+
+		# Get input
+		my $diff = 0;
+		while ( $diff < .9 ) {
+			my $prev = gettimeofday;
+
+			# 			
+			$input = getc(TTY);
+
+			my $curr = gettimeofday;
+			my $diff = $curr - $prev;
+		}
 	}
 }
 
@@ -59,7 +82,7 @@ sub get_empty_index {
 }
 
 sub generate_word {
-	$rand = int(rand($NUM_WORDS));
+	my $rand = int(rand($NUM_WORDS));
 	return "$WORDS[$rand]";
 }
 
