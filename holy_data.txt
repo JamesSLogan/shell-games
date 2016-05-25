@@ -1,0 +1,96 @@
+get_indices() {
+	blbeg=""
+	blend=""
+	case $1 in
+		"genesis"        ) beg=1;     end=1534 ;;
+		"exodus"         ) beg=1534;  end=2747 ;;
+		"leviticus"      ) beg=2747;  end=3606 ;;
+		"numbers"        ) beg=3606;  end=4894 ;;
+		"deuteronomy"    ) beg=4894;  end=5853 ;;
+		"joshua"         ) beg=5853;  end=6411 ;;
+		"judges"         ) beg=6411;  end=7129 ;;
+		"ruth"           ) beg=7129;  end=7214 ;;
+		"1 samuel"       ) beg=7214;  end=8024 ;;
+		"2 samuel"       ) beg=8024;  end=8719 ;;
+		"1 kings"        ) beg=8719;  end=9535 ;;
+		"2 kings"        ) beg=9535;  end=10254 ;;
+		"1 chronicles"   ) beg=10254; end=11196 ;;
+		"2 chronicles"   ) beg=11196; end=12018 ;;
+		"ezra"           ) beg=12018; end=12298 ;;
+		"nehemiah"       ) beg=12298; end=12704 ;;
+		"esther"         ) beg=12704; end=12871 ;;
+		"job"            ) beg=12871; end=13941 ;;
+		"psalms"         ) beg=13941; end=16402 ;;
+		"proverbs"       ) beg=16402; end=17317 ;;
+		"ecclesiastes"   ) beg=17317; end=17539 ;;
+		"song of songs"  ) beg=17539; end=17656 ;;
+		"isaiah"         ) beg=17656; end=18948 ;;
+		"jeremiah"       ) beg=18948; end=20312 ;;
+		"lamentations"   ) beg=20312; end=20466 ;;
+		"ezekiel"        ) beg=20466; end=21739 ;;
+		"daniel"         ) beg=21739; end=22096 ;;
+		"hosea"          ) beg=22096; end=22293 ;;
+		"joel"           ) beg=22293; end=22366 ;;
+		"amos"           ) beg=22366; end=22512 ;;
+		"obadiah"        ) beg=22512; end=22533 ;;
+		"jonah"          ) beg=22533; end=22581 ;;
+		"micah"          ) beg=22581; end=22686 ;;
+		"nahum"          ) beg=22686; end=22733 ;;
+		"habakkuk"       ) beg=22733; end=22789 ;;
+		"zephaniah"      ) beg=22789; end=22842 ;;
+		"haggai"         ) beg=22842; end=22880 ;;
+		"zechariah"      ) beg=22880; end=23091 ;;
+		"malachi"        ) beg=23091; end=23146 ;;
+		"matthew"        ) beg=23146; end=24217 ;;
+		"mark"           ) beg=24217; end=24895 ;;
+		"luke"           ) beg=24895; end=26046 ;;
+		"john"           ) beg=26046; end=26925 ;;
+		"acts"           ) beg=26925; end=27932 ;;
+		"romans"         ) beg=27932; end=28365 ;;
+		"1 corinthians"  ) beg=28365; end=28802 ;;
+		"2 corinthians"  ) beg=28802; end=29059 ;;
+		"galatians"      ) beg=29059; end=29208 ;;
+		"ephesians"      ) beg=29208; end=29363 ;;
+		"philippians"    ) beg=29363; end=29467 ;;
+		"colossians"     ) beg=29467; end=29562 ;;
+		"1 thessalonians") beg=29562; end=29651 ;;
+		"2 thessalonians") beg=29651; end=29698 ;;
+		"1 timothy"      ) beg=29698; end=29811 ;;
+		"2 timothy"      ) beg=29811; end=29894 ;;
+		"titus"          ) beg=29894; end=29940 ;;
+		"philemon"       ) beg=29940; end=29965 ;;
+		"hebrews"        ) beg=29965; end=30268 ;;
+		"james"          ) beg=30268; end=30376 ;;
+		"1 peter"        ) beg=30376; end=30481 ;;
+		"2 peter"        ) beg=30481; end=30542 ;;
+		"1 john"         ) beg=30542; end=30647 ;;
+		"2 john"         ) beg=30647; end=30660 ;;
+		"3 john"         ) beg=30660; end=30674 ;;
+		"jude"           ) beg=30674; end=30699 ;;
+		"revelation"     ) beg=30699; end=31103 ;;
+		*) echo "Invalid book selection"; exit 1 ;;
+	esac
+}
+get_group_indices() {
+	blbeg=""
+	blend=""
+	case $1 in
+		"law"               ) beg=1;     end=5853 ;;
+		"history"           ) beg=5853;  end=12871 ;;
+		"wisdom"            ) beg=12871; end=17656; blbeg=13941; blend=16402 ;;
+		"wisdom no job"     ) beg=16402; end=17656 ;;
+		"poetry"            ) beg=13941; end=20466; blbeg=16402; blend=20312 ;;
+		"major prophets"    ) beg=17656; end=22096; blbeg=20312; blend=20466 ;;
+		"minor prophets"    ) beg=22096; end=23146 ;;
+		"gospels"           ) beg=23146; end=26925 ;;
+		"gospels with acts" ) beg=23146; end=27932 ;;
+		"epistles"          ) beg=27932; end=30699 ;;
+		"epistles paul only") beg=27932; end=29965 ;;
+		"epistles non-paul" ) beg=29965; end=30699 ;;
+		#"apocalyptic"       ) beg=30699; end=31103 ;;
+		"apocalyptic"       ) beg=20466; end=31103; blbeg=22096; blend=30699 ;;
+		"old testament"     ) beg=1; end=23146 ;;
+		"new testament"     ) beg=23146; end=31103 ;;
+		*) echo "Invalid group selection"; exit 1 ;;
+	esac
+}
