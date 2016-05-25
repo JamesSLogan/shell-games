@@ -39,6 +39,7 @@ my @template=(3.0, 2.8, 2.6, 2.5, 2.4, 2.3, 2.2, 2.1, 2.0, 1.9, 1.8, 1.7, 1.6, 1
 my $increment=10;
 my @wait=();
 my $wait_index=0;
+my $empty=0;
 my $word_limit=23; # Because terminals are usually 24 rows long
 
 ReadMode 3;
@@ -86,10 +87,11 @@ sub run_game {
 			$input = ReadKey(-1);
 
 			# Is it the right letter?
-#			if ( defined($input) ) { # prevents perl error?
+			if ( defined($input) ) { # prevents perl error?
 				if ( $input eq substr($active[0], $word_index, 1) ) {
 					$word_index++;
 					$x++;
+print "\e[10;20Hwi: $word_index, len: ", length($active[0]);
 					print "\e[$y;${x}H";
 					if ( $word_index >= length($active[0]) ) {
 						$y--;
@@ -100,7 +102,7 @@ sub run_game {
 						print "\e[$y;${x}H";
 					}
 				}
-#			}
+			}
 
 			usleep 100; # So that cpu can do other stuff I guess.
 			$curr = gettimeofday;
