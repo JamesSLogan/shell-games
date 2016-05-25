@@ -1,5 +1,9 @@
 #!/usr/bin/perl
 
+# NOTE: This code is not 100% portable. If you notice that words are not being
+#       recognized as complete, change this offset variable to equal 1.
+my $offset=0;
+
 ###############################################################################
 #                         Variable Initializations                            #
 ###############################################################################
@@ -23,26 +27,23 @@ unless ( -e $DICTIONARY ) {
 open (TMP, $DICTIONARY);
 my @WORDS = <TMP>;
 close (TMP);
-my $NUM_WORDS = @WORDS;
+my $num_words = @WORDS;
 
 # Game setup
-my $tmp=0;
+my $increment=10; # How often speed goes up.
+my $word_limit=23; # Lose if there are this many words on screen
+
 my @active=();my $word_index=0;
 my $alive=1;
 my $prev=1;my $curr=1;my $diff=1;
 my $input="";
-my $x=1;my $y=0;
-my $rand=0;
-my $elapsed=0;
+my $x=1;my $y=0; # Determine where cursor is
 my $start_time=gettimeofday;
-my @template=(3.0, 2.8, 2.6, 2.5, 2.4, 2.3, 2.2, 2.1, 2.0, 1.9, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0);
-my $increment=10;
+my @template=(3.0, 2.6, 2.4, 2.2, 2.1, 2.0, 1.9, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0);
 my @wait=();
 my $wait_index=0;
-my $empty=0;
-my $word_limit=23; # Because terminals are usually 24 rows long
 
-ReadMode 3;
+ReadMode 3; # No echo, but you can still send signals.
 
 ###############################################################################
 #                              Main functions                                 #
@@ -78,7 +79,7 @@ sub run_game {
 			next;
 		}
 
-		# Get input
+		# Wait for 1-3 seconds before adding next word.
 		$diff = 0;
 		$prev = gettimeofday;
 		while ( $diff < $wait[$wait_index] ) {
@@ -87,13 +88,12 @@ sub run_game {
 			$input = ReadKey(-1);
 
 			# Is it the right letter?
-			if ( defined($input) ) { # prevents perl error?
+			if ( defined($input) && defined($active[0]) ) { #prevents error msg
 				if ( $input eq substr($active[0], $word_index, 1) ) {
 					$word_index++;
 					$x++;
-print "\e[10;20Hwi: $word_index, len: ", length($active[0]);
 					print "\e[$y;${x}H";
-					if ( $word_index >= length($active[0]) ) {
+					if ( $word_index >= length($active[0])+$offset ) {
 						$y--;
 						$x=1;
 						$word_index=0;
@@ -125,8 +125,8 @@ sub output {
 # 2. @template holds the (decreasing) values that the games uses to know how
 #    long to wait for in between words.
 # 3. This method copies those values to @wait 10 times, so that every second
-#    that goes by represents an element of @wait. Then, every 10 seconds, the
-#    wait will go down.
+#    that goes by while the game is running correlates to an element of @wait.
+#    Then, every 10 seconds, the wait will go down.
 sub setup_wait {
 	for my $i (0 .. $#template) {
 		for my $j ($i*$increment .. $i*$increment+$increment-1) {
@@ -148,7 +148,7 @@ sub set_speed {
 }
 
 sub generate_word {
-	$rand = int(rand($NUM_WORDS));
+	my $rand = int(rand($num_words));
 	return "$WORDS[$rand]";
 }
 
@@ -160,7 +160,7 @@ sub clear_screen {
 sub end_game {
 
 	$curr = gettimeofday;
-	$elapsed = int($curr - $start_time);
+	my $elapsed = int($curr - $start_time);
 	print "\e[24;1HYou made it for $elapsed seconds.\n";
 
 	system("stty echo");
