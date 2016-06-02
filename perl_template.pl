@@ -4,6 +4,9 @@
 #                         Variable Initializations                            #
 ###############################################################################
 
+use strict;
+use warnings;
+
 $black="\e[30m";
 $red="\e[31m";
 $green="\e[32m";
