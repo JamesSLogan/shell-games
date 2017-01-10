@@ -518,9 +518,7 @@ sub pass
     # Create hash of arrays of each player's passed cards.
     my %passes = get_cpu_passes($hand_mod);
     $passes{&BOTTOM} = [@PASS_CARDS];
-#    @PASS_CARDS = ();
-    @PASS_CARDS = @{$passes{&LEFT}};
-return;
+    @PASS_CARDS = ();
 
     #
     # Actually pass the cards.
@@ -631,12 +629,7 @@ sub get_cpu_passes
     for (@PERSONS)
     {
         next if ($_ == BOTTOM);
-
-        my @suit_weights = calculate_suit_weights($_, @values);
-debug(Dumper(@suit_weights));
-
-        my @passes = actually_get_passes($_, @suit_weights);
-push @{$return_hash{$_}}, @passes;
+        $return_hash{$_} = actually_get_passes($_, @values);
     }
 
     return %return_hash;
@@ -648,15 +641,17 @@ sub get_values
     my $hand_mod = shift;
 
     my $two_club = 0;
+    my $thr_club = 1;
     my $ace_club = 12;
     my $que_spad = 36;
 
     # Base values: twos are lowest, aces are highest. High hearts are weighted
     # more.
-    my @values = (-50, -10, 0, 20, 30, 40, 60, 70, 80, 90, 100, 110, 120) x 3;
+    my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 3;
     push (@values, (-50, -10, 0, 20, 30, 40, 60, 70, 120, 130, 170, 180, 200));
 
-    $values[$two_club] = 65; # 2 of clubs isn't that good...
+    $values[$two_club] = 65;  # 2 of clubs isn't that good...
+    $values[$thr_club] = -50; # 3 of clubs is...
 
     # Passing to the left.
     if ($hand_mod == 1)
@@ -681,9 +676,8 @@ sub calculate_suit_weights
     # As suit lengths increase, their weight should drop a lot.
     my @length_adjustments = (-1, 1, 2, 3, 5, 8, 10, 10, 10, 10, 10, 10, 10);
 
-    # Get length and strength of each suit.
+    # Get length and strength of each suit. Length is good, strength is bad.
     my @weights = (0, 0, 0, 0);
-#debug(Dumper(@{$GAME_DATA{$player}{HAND}}));
     for (0..3)
     {
         # Get the length of the suit and convert it to adjusted length.
@@ -695,21 +689,73 @@ sub calculate_suit_weights
             $strength += $values[$card] if (suit_of($card) == $_);
         }
 
-        # Multiply by 3 for use in the actually_get_passes sub. it's somewhat
+        # TODO: Multiply by 3 for use in the actually_get_passes sub. it's somewhat
         # arbitrary.
         $weights[$_] = int($strength / $length);
-#debug("player $player, suit $_, weight = $weights[$_] (=$strength/$length)");
     }
 
     return @weights;
 }
 
+# Returns array of 3 indices 0-12 representing the 3 cards cpu will pass.
 sub actually_get_passes
 {
     my $player = shift;
-    my @suit_weights = @_;
+    my @values = @_;
+    my @passes = ();
+
+    for my $index (0..2)
+    {
+        my @suit_weights = calculate_suit_weights($player, @values);
+        my $highest_suit = get_highest_suit(@suit_weights);
+        my $highest_card = get_highest_card($player, $highest_suit);
+    }
+
 
     
+    return @passes;
+}
+
+sub get_highest_suit
+{
+    my @weights = @_;
+    my $highest_weight = 0;
+    my $index = -1;
+
+    for my $i (0 .. $#weights)
+    {
+        if ( $weights[$i] > $highest_weight )
+        {
+            $highest_weight = $weights[$i];
+            $index = $i;
+        }
+    }
+
+    return $index;
+}
+
+# Returns index 0-12 of player's highest card of specified suit.
+sub get_highest_card
+{
+    my $player = shift;
+    my $suit   = shift;
+
+    my $highest_card = 0;
+    my $index = -1;
+
+    my @hand = @{$GAME_DATA{$player}{HAND}};
+    for my $i (0 .. $#hand)
+    {
+        next unless(suit_of($hand[$i]) == $suit);
+
+        if ($hand[$i] > $highest_card)
+        {
+            $highest_card = $hand[$i];
+            $index = $i;
+        }
+    }
+
+    return $index;
 }
 
 sub has_queen_of_spades
@@ -751,7 +797,7 @@ sub cpu_choose_card
 
     return 0 if ($GAME_DATA{TURN} == 1 && $hand[0] == 0); # 2 of clubs
 
-    for (0..scalar(@hand)-1)
+    for (0 .. $#hand)
     {
         my $suit = suit_of($hand[$_]);
         return $_ if ($suit == $lead_suit);
@@ -902,7 +948,6 @@ sub main
         print $hand_pos, "$underline      $reset";
 
         # Draw PASS or PLAY over a user's selection.
-#        for (@PASS_CARDS) # need to undo where this gets set in sub pass
         for (@PASS_CARDS)
         {
             print "\e[36;".($_*7+length($spaces)+2)."H";
@@ -919,8 +964,7 @@ sub main
            if ( $input eq "C" ) { if ($hand_index < $x) { $hand_index++; } }
         elsif ( $input eq "D" ) { if ($hand_index > 0) { $hand_index--; } }
         elsif ( $input eq " " ) { toggle($hand_index) if($state < 2); }
-#        elsif ( $input eq "\n") { play($hand_index) if($state); }
-        elsif ( $input eq "\n") { play($hand_index); }
+        elsif ( $input eq "\n") { play($hand_index) if($state); }
         elsif ( $input eq "q" ) { end_game(); }
         elsif ( $input eq "p" ) { debug(Dumper(%GAME_DATA)); }
     }
