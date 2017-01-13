@@ -206,14 +206,12 @@ sub draw_board
     # Print bottom hand
     print "$spaces", "$top " x $num_cards, "\n";
     print "$spaces";
-#    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "|  $DECK[$_]| "; }
-    for ( @{$GAME_DATA{&LEFT}{HAND}} ) { print "|  $DECK[$_]| "; }
+    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "|  $DECK[$_]| "; }
     print "\n";
     print "$spaces", "$mid " x $num_cards, "\n";
     print "$spaces", "$mid " x $num_cards, "\n";
     print "$spaces";
-#    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "$underline|$DECK[$_]  |$reset "; }
-    for ( @{$GAME_DATA{&LEFT}{HAND}} ) { print "$underline|$DECK[$_]  |$reset "; }
+    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "$underline|$DECK[$_]  |$reset "; }
 
     # Print any cards that have been played.
     for (@PERSONS)
@@ -617,8 +615,8 @@ sub user_chose_illegal_cards
 # CPU PASSING AI SUBS
 ###############################################################################
 
-# General strategy: weigh the different suits against each other, then pass
-# mostly from the worst suit.
+# Current strategy: weigh the different suits against each other, then pass
+# the highest card from the worst suit.
 sub get_cpu_passes
 {
     my $hand_mod = shift;
@@ -629,7 +627,7 @@ sub get_cpu_passes
     for (@PERSONS)
     {
         next if ($_ == BOTTOM);
-        $return_hash{$_} = actually_get_passes($_, @values);
+        $return_hash{$_} = [actually_get_passes($_, @values)];
     }
 
     return %return_hash;
@@ -647,6 +645,7 @@ sub get_values
 
     # Base values: twos are lowest, aces are highest. High hearts are weighted
     # more.
+    #                2    3   4  5   6   7   8   9   10    J    Q    K    A
     my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 3;
     push (@values, (-50, -10, 0, 20, 30, 40, 60, 70, 120, 130, 170, 180, 200));
 
@@ -666,25 +665,52 @@ sub get_values
     return @values;
 }
 
+# Returns array of 3 indices 0-12 representing the 3 cards cpu will pass.
+sub actually_get_passes
+{
+    my $player = shift;
+    my @values = @_;
+    my @passes = ();
+
+    my @hand = @{$GAME_DATA{$player}{HAND}};
+    my @hand_copy = @hand;
+    my $actual_index;
+
+    for (0..2)
+    {
+        my @suit_weights = calculate_suit_weights(\@hand, \@values);
+        my $highest_suit = get_highest_suit(@suit_weights);
+        my $highest_card = get_highest_card($highest_suit, \@hand, \@values);
+
+        $actual_index = index_of($hand[$highest_card], @hand_copy);
+        push (@passes, $actual_index);
+        splice (@hand, $highest_card, 1);
+    }
+
+    return @passes;
+}
+
 # returns array of 4 values representing that suit's weight.
 # weight is basically high cards over length.
 sub calculate_suit_weights
 {
-    my $player = shift;
-    my @values = @_;
+    my $hand_ref   = shift; my @hand   = @{$hand_ref};
+    my $values_ref = shift; my @values = @{$values_ref};
 
-    # As suit lengths increase, their weight should drop a lot.
+    # We will divide the strength by this number rather than the actual suit
+    # length since as suit lengths increase, their weight should drop a lot.
     my @length_adjustments = (-1, 1, 2, 3, 5, 8, 10, 10, 10, 10, 10, 10, 10);
+# NOTE: should be brought to .5?  ^
 
     # Get length and strength of each suit. Length is good, strength is bad.
     my @weights = (0, 0, 0, 0);
     for (0..3)
     {
         # Get the length of the suit and convert it to adjusted length.
-        my $length = $length_adjustments[count($player, $_)];
+        my $length = $length_adjustments[count($_, @hand)];
         my $strength = 0;
 
-        for my $card (@{$GAME_DATA{$player}{HAND}})
+        for my $card (@hand)
         {
             $strength += $values[$card] if (suit_of($card) == $_);
         }
@@ -697,60 +723,42 @@ sub calculate_suit_weights
     return @weights;
 }
 
-# Returns array of 3 indices 0-12 representing the 3 cards cpu will pass.
-sub actually_get_passes
-{
-    my $player = shift;
-    my @values = @_;
-    my @passes = ();
-
-    for my $index (0..2)
-    {
-        my @suit_weights = calculate_suit_weights($player, @values);
-        my $highest_suit = get_highest_suit(@suit_weights);
-        my $highest_card = get_highest_card($player, $highest_suit);
-    }
-
-
-    
-    return @passes;
-}
-
+# Returns int 0-3 representing suit with highest weight.
 sub get_highest_suit
 {
     my @weights = @_;
     my $highest_weight = 0;
-    my $index = -1;
+    my $suit = -1;
 
     for my $i (0 .. $#weights)
     {
         if ( $weights[$i] > $highest_weight )
         {
             $highest_weight = $weights[$i];
-            $index = $i;
+            $suit = $i;
         }
     }
 
-    return $index;
+    return $suit;
 }
 
 # Returns index 0-12 of player's highest card of specified suit.
 sub get_highest_card
 {
-    my $player = shift;
-    my $suit   = shift;
+    my $suit       = shift;
+    my $hand_ref   = shift; my @hand   = @{$hand_ref};
+    my $values_ref = shift; my @values = @{$values_ref};
 
     my $highest_card = 0;
     my $index = -1;
 
-    my @hand = @{$GAME_DATA{$player}{HAND}};
     for my $i (0 .. $#hand)
     {
         next unless(suit_of($hand[$i]) == $suit);
 
-        if ($hand[$i] > $highest_card)
+        if ($values[$hand[$i]] > $highest_card)
         {
-            $highest_card = $hand[$i];
+            $highest_card = $values[$hand[$i]];
             $index = $i;
         }
     }
@@ -768,15 +776,15 @@ sub has_queen_of_spades
 }
 
 # Super useful; returns the length of a user's suit. 
-# usage: count(user, suit), ex: count(BOTTOM, HEARTS);
+# usage: count(suit, hand), ex: count(HEARTS, @{$GAME_DATA{BOTTOM}{HAND}});
 sub count
 {
-    my $player = shift;
-    my $suit   = shift;
+    my $suit = shift;
+    my @hand = @_;
 
     my $count = 0;
 
-    for (@{$GAME_DATA{$player}{HAND}})
+    for (@hand)
     {
         $count++ if (suit_of($_) == $suit);
     }
@@ -813,6 +821,13 @@ sub cpu_choose_card
 ###############################################################################
 
 sub suit_of { return int($_[0]/13); }
+
+sub index_of
+{
+    my $val = shift;
+    my @arr = @_;
+    for my $i (0..$#arr) { return $i if ($arr[$i] == $val); }
+}
 
 sub wait_for_input
 {
