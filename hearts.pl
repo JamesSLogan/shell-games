@@ -69,6 +69,33 @@ use constant DIAMONDS => 1;
 use constant SPADES   => 2;
 use constant HEARTS   => 3;
 
+#
+# GAME_DATA is the main, global hash that contains all current game data:
+#
+# %GAME_DATA
+#  |->%player                 int 0-3, one for each player. See @PERSONS.
+#  | |-> $POINTS              This player's current number of points.
+#  | |-> $CURRENTCARD         Index of player's selected card. Undef otherwise.
+#  | \-> @HAND                Array of @DECK values, starts at 13.
+#  |
+#  |->$STATE                  Game state - see main sub for values.
+#  |->$TURN                   int 1-13, representing current turn. First and
+#  |                          last turns are the main ones to keep track of.
+#  |
+#  |->$LEADER                 int 0-3 representing who led this turn.
+#  |->$LEADSUIT               int 0-3 representing the suit led this turn.
+#  |
+#  |->$HEARTSBROKEN           int 0/1 representing if hearts have been broken.
+#  |
+#  |->$MSG                    Global message to be printed.
+#  |->$MSGCOLOR               Global message color.
+#  |
+#  |->@SUITCOUNT              Running tally of number of cards that have been
+#  |                          played in each suit. 0-13.
+#  |
+#  \->$HANDCOUNT              The only variable that spans multiple hands, it
+#                             represents how many hands have been played.
+#
 my %GAME_DATA;
 my @PERSONS = ( 0 .. 3 );
 my @PASS_CARDS = ();
@@ -131,6 +158,8 @@ sub new_hand
     $GAME_DATA{HEARTSBROKEN} = 0;
 
     $GAME_DATA{HANDCOUNT}++;
+
+    $GAME_DATA{SUITCOUNT} = [0, 0, 0, 0];
 
     my @shuffled = shuffle();
 
@@ -195,13 +224,78 @@ sub draw_board
     print "\n" x $num_lines;
 
     $num_spaces = $WIDTH - (2*length($top)) - 2;
-    for ( 0 .. $num_cards )
+    for ( 0 .. $num_cards-1 )
     {
         print " $top", " " x $num_spaces, "$top", "\n";
         print " $mid", " " x $num_spaces, "$mid", "\n";
     }
 
     print "\n" x $num_lines;
+
+    # Print bottom hand
+    print "$spaces", "$top " x $num_cards, "\n";
+    print "$spaces";
+    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "|  $DECK[$_]| "; }
+    print "\n";
+    print "$spaces", "$mid " x $num_cards, "\n";
+    print "$spaces", "$mid " x $num_cards, "\n";
+    print "$spaces";
+    for ( @{$GAME_DATA{&BOTTOM}{HAND}} ) { print "$underline|$DECK[$_]  |$reset "; }
+
+    # Print any cards that have been played.
+    for (@PERSONS)
+    {
+        if (defined($GAME_DATA{$_}{CURRENTCARD}))
+        {
+            draw_card_in_middle($_, $GAME_DATA{$_}{CURRENTCARD});
+        }
+    }
+
+    return $spaces;
+}
+
+sub draw_board_cheater
+{
+    my $top = "______";
+    my $mid = "|    |";
+    my $bot = "$underline|    |$reset";
+
+    my $num_spaces;
+
+    my $num_cards = scalar(@{$GAME_DATA{&BOTTOM}{HAND}});
+
+    # Used for top and bottom hands
+    $num_spaces = ceil(($WIDTH - $num_cards*7) / 2);
+    my $spaces = " " x $num_spaces;
+
+    # Print top hand
+    print "\e[H\e[2J";
+    print "$spaces", "$top " x $num_cards, "\n";
+    print "$spaces";
+    for ( @{$GAME_DATA{&TOP}{HAND}} ) { print "|  $DECK[$_]| "; }
+    print "\n";
+    print "$spaces", "$mid " x $num_cards, "\n";
+    print "$spaces", "$mid " x $num_cards, "\n";
+    print "$spaces";
+    for ( @{$GAME_DATA{&TOP}{HAND}} ) { print "$underline|$DECK[$_]  |$reset "; }
+    print "\n";
+    print "\n";
+
+    # Print left and right hands
+    my $num_lines = 14 - $num_cards;
+    print "\n" x $num_lines;
+
+    $num_spaces = $WIDTH - (2*length($top)) - 2;
+    for ( 0 .. $num_cards-1 )
+    {
+        my $left_card  = @{$GAME_DATA{&LEFT}{HAND}}[$_];
+        my $right_card = @{$GAME_DATA{&RIGHT}{HAND}}[$_];
+        print " $top", " " x $num_spaces, "$top", "\n";
+        print " | $DECK[$left_card] |", " " x $num_spaces, "| $DECK[$right_card] |", "\n";
+    }
+
+    print "\n" x $num_lines;
+    print "\n";
 
     # Print bottom hand
     print "$spaces", "$top " x $num_cards, "\n";
@@ -346,7 +440,7 @@ sub play
         {
             for (@PERSONS)
             {
-                if ( $GAME_DATA{$_}{HAND}[0] == 0 )
+                if ($GAME_DATA{$_}{HAND}[0] == 0)
                 {
                     $GAME_DATA{LEADER} = $_;
                     $GAME_DATA{LEADSUIT} = 0;
@@ -413,13 +507,14 @@ sub play
             $player = get_next($player);
         }
 
-        draw_board();
+        #draw_board();
+        draw_board_cheater();
 
         $GAME_DATA{STATE}++;
         $state++;
     }
 
-    # State 5: Calculate points and reset a few variables.
+    # State 5: Calculate points and set/reset a few variables.
     if ($state == 5)
     {
         my $lead_suit = $GAME_DATA{LEADSUIT};
@@ -454,7 +549,12 @@ sub play
 
         for (@PERSONS)
         {
-            splice(@{$GAME_DATA{$_}{HAND}}, $GAME_DATA{$_}{CURRENTCARD}, 1);
+            my $card = $GAME_DATA{$_}{CURRENTCARD};
+
+            # Update counts of each suit so that CPUs can track cards played too.
+            $GAME_DATA{SUITCOUNT}[suit_of(@{$GAME_DATA{$_}{HAND}}[$card])]++;
+
+            splice(@{$GAME_DATA{$_}{HAND}}, $card, 1);
             $GAME_DATA{$_}{CURRENTCARD} = undef;
         }
 
@@ -581,7 +681,7 @@ sub user_chose_illegal_cards
     my $lead_suit = $GAME_DATA{LEADSUIT};
 
     # Check for an illegal suit based on lead.
-    if ($user_suit != $lead_suit && defined($lead_suit))
+    if (defined($lead_suit) && $user_suit != $lead_suit)
     {
         for (@{$GAME_DATA{&BOTTOM}{HAND}})
         {
@@ -633,38 +733,6 @@ sub get_cpu_passes
     return %return_hash;
 }
 
-# returns array of 52 ints which are relative weights of all cards.
-sub get_values
-{
-    my $hand_mod = shift;
-
-    my $two_club = 0;
-    my $thr_club = 1;
-    my $ace_club = 12;
-    my $que_spad = 36;
-
-    # Base values: twos are lowest, aces are highest. High hearts are weighted
-    # more.
-    #                2    3   4  5   6   7   8   9   10    J    Q    K    A
-    my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 3;
-    push (@values, (-50, -10, 0, 20, 30, 40, 60, 70, 120, 130, 170, 180, 200));
-
-    $values[$two_club] = 65;  # 2 of clubs isn't that good...
-    $values[$thr_club] = -50; # 3 of clubs is...
-
-    # Passing to the left.
-    if ($hand_mod == 1)
-    {
-        $values[$ace_club] = 200; # it's most helpful when passed to the left.
-    }
-    # Passing to the right.
-    elsif ($hand_mod == 2)
-    {
-        $values[$que_spad] = 200; # it's most helpful when passed to the right.
-    }
-    return @values;
-}
-
 # Returns array of 3 indices 0-12 representing the 3 cards cpu will pass.
 sub actually_get_passes
 {
@@ -690,6 +758,168 @@ sub actually_get_passes
     return @passes;
 }
 
+###############################################################################
+# CPU PLAYING AI SUBS
+###############################################################################
+
+sub cpu_choose_card
+{
+    my $cpu = shift;
+
+    my @hand = @{$GAME_DATA{$cpu}{HAND}};
+    my $lead_suit = $GAME_DATA{LEADSUIT};
+    my $leader    = $GAME_DATA{LEADER};
+
+    my $selection;
+
+    # 2 of clubs
+    return 0 if ($GAME_DATA{TURN} == 1 && $hand[0] == 0);
+
+    # Last card = don't care what it is. This also covers some bugs probably.
+    return 0 if (scalar(@hand) == 1);
+
+    # If we're the leader, do that logic.
+    if ($leader == $cpu)
+    {
+        return choose_leader_card(@hand);
+    }
+
+    my $count = count($lead_suit, @hand);
+
+    # Play the highest card possible without taking power.
+    if ($count)
+    {
+        # If this is the first time a suit has been played, just play highest
+        # card possible. YOLO
+        if (@{$GAME_DATA{SUITCOUNT}}[suit_of($lead_suit)] == 0)
+        {
+            $selection = play_highest_card($lead_suit, @hand);
+        }
+
+        # Play highest card under other ones played
+        elsif (can_avoid_power($cpu, @hand))
+        {
+            err("how did we get here?");
+        }
+
+        # Play highest card.
+        else
+        {
+            $selection = play_highest_card($lead_suit, @hand);
+        }
+    }
+    # Toss your worst card.
+    else
+    {
+        $selection = play_highest_card(undef, @hand);
+    }
+
+
+
+    return $selection;
+}
+
+sub choose_leader_card
+{
+    my @hand = @_;
+
+    my @values = get_values();
+
+    # Strategy: play lowest card of best suit.
+    my @suit_weights = calculate_suit_weights(\@hand, \@values);
+
+    # Make sure we don't break hearts by inflating the hearts value.
+    # Note that if hearts are the only suit left, they'll get chosen.
+    $suit_weights[HEARTS] = 998 if (! $GAME_DATA{HEARTSBROKEN});
+
+    # Calculate_suit_weights sets empty suits to -999 so now we need to make
+    # sure we don't choose those...
+    for my $i (0 .. $#suit_weights)
+    {
+        $suit_weights[$i] = 999 if ($suit_weights[$i] == -999);
+    }
+
+    my $lowest_suit  = get_lowest_suit(@suit_weights);
+
+    return get_lowest_card($lowest_suit, \@hand, \@values);
+}
+
+# wrapper function
+sub play_highest_card
+{
+    my $suit = shift;
+    my @hand = @_;
+
+    my @values = get_values();
+    my $highest_suit;
+
+    if (defined $suit)
+    {
+        $highest_suit = $suit;
+    }
+    else
+    {
+        my @suit_weights = calculate_suit_weights(\@hand, \@values);
+        $highest_suit = get_highest_suit(@suit_weights);
+    }
+
+    return get_highest_card($highest_suit, \@hand, \@values);
+}
+
+# TODO
+sub can_avoid_power
+{
+    return 0;
+}
+
+###############################################################################
+# AI HELPER SUBS
+###############################################################################
+
+# returns array of 52 ints which are relative weights of all cards.
+# Is slightly different when passing, as compared to when playing.
+sub get_values
+{
+    my $hand_mod = shift; # only used for passing code
+
+    my $two_club = 0;
+    my $thr_club = 1;
+    my $ace_club = 12;
+    my $que_spad = 36;
+
+    my $passing = $GAME_DATA{STATE} < 2 ? 1 : 0;
+
+    # Base values: twos are lowest, aces are highest. High hearts are weighted
+    # more.
+    #                2    3   4  5   6   7   8   9   10    J    Q    K    A
+    my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 3;
+    push (@values, (-50, -10, 0, 20, 30, 40, 60, 70, 120, 130, 170, 180, 200));
+# TODO: make all spades under the queen extra low?
+
+    $values[$two_club] = 65;  # 2 of clubs isn't that good...
+    $values[$thr_club] = -50; # 3 of clubs is...
+
+    if($passing)
+    {
+        # Passing to the left.
+        if ($hand_mod == 1)
+        {
+            $values[$ace_club] = 200; # it's most helpful when passed to the left.
+        }
+        # Passing to the right.
+        elsif ($hand_mod == 2)
+        {
+            $values[$que_spad] = 200; # it's most helpful when passed to the right.
+        }
+    }
+    else
+    {
+        $values[$que_spad] = 200;
+    }
+
+    return @values;
+}
+
 # returns array of 4 values representing that suit's weight.
 # weight is basically high cards over length.
 sub calculate_suit_weights
@@ -700,7 +930,7 @@ sub calculate_suit_weights
     # We will divide the strength by this number rather than the actual suit
     # length since as suit lengths increase, their weight should drop a lot.
     my @length_adjustments = (-1, 1, 2, 3, 5, 8, 10, 10, 10, 10, 10, 10, 10);
-# NOTE: should be brought to .5?  ^
+# TODO: should be brought to .5?  ^
 
     # Get length and strength of each suit. Length is good, strength is bad.
     my @weights = (0, 0, 0, 0);
@@ -710,13 +940,20 @@ sub calculate_suit_weights
         my $length = $length_adjustments[count($_, @hand)];
         my $strength = 0;
 
+        # We can't pass or play a card that doesn't exist, so make sure that
+        # nothing will be lower than an empty suit. This messes with subs that
+        # get the lowest suit.
+        if ($length < 0)
+        {
+            $weights[$_] = -999;
+            next;
+        }
+
         for my $card (@hand)
         {
             $strength += $values[$card] if (suit_of($card) == $_);
         }
 
-        # TODO: Multiply by 3 for use in the actually_get_passes sub. it's somewhat
-        # arbitrary.
         $weights[$_] = int($strength / $length);
     }
 
@@ -727,12 +964,31 @@ sub calculate_suit_weights
 sub get_highest_suit
 {
     my @weights = @_;
-    my $highest_weight = 0;
+    my $highest_weight = -999;
     my $suit = -1;
 
     for my $i (0 .. $#weights)
     {
         if ( $weights[$i] > $highest_weight )
+        {
+            $highest_weight = $weights[$i];
+            $suit = $i;
+        }
+    }
+
+    return $suit;
+}
+
+# Returns int 0-3 representing suit with lowest weight.
+sub get_lowest_suit
+{
+    my @weights = @_;
+    my $highest_weight = 999;
+    my $suit = -1;
+
+    for my $i (0 .. $#weights)
+    {
+        if ( $weights[$i] < $highest_weight )
         {
             $highest_weight = $weights[$i];
             $suit = $i;
@@ -749,7 +1005,7 @@ sub get_highest_card
     my $hand_ref   = shift; my @hand   = @{$hand_ref};
     my $values_ref = shift; my @values = @{$values_ref};
 
-    my $highest_card = 0;
+    my $highest_card = -999;
     my $index = -1;
 
     for my $i (0 .. $#hand)
@@ -761,6 +1017,56 @@ sub get_highest_card
             $highest_card = $values[$hand[$i]];
             $index = $i;
         }
+    }
+
+    if ($index < 0)
+    {
+        debug("STARTING DEBUG (i=$#hand?)");
+        debug("suit: $suit");
+        debug("hand:");
+        debug(Dumper(@hand));
+        debug("values:");
+        debug(Dumper(@values));
+        debug("caller:");
+        debug(caller);
+        err("get_highest_card found no highest card.");
+    }
+
+    return $index;
+}
+
+# Returns index 0-12 of player's highest card of specified suit.
+sub get_lowest_card
+{
+    my $suit       = shift;
+    my $hand_ref   = shift; my @hand   = @{$hand_ref};
+    my $values_ref = shift; my @values = @{$values_ref};
+
+    my $highest_card = 999;
+    my $index = -1;
+
+    for my $i (0 .. $#hand)
+    {
+        next unless(suit_of($hand[$i]) == $suit);
+
+        if ($values[$hand[$i]] < $highest_card)
+        {
+            $highest_card = $values[$hand[$i]];
+            $index = $i;
+        }
+    }
+
+    if ($index < 0)
+    {
+        debug("STARTING DEBUG");
+        debug("suit: $suit");
+        debug("hand:");
+        debug(Dumper(@hand));
+        debug("values:");
+        debug(Dumper(@values));
+        debug("caller:");
+        debug(caller);
+        err("get_lowest_card found no lowest card.")
     }
 
     return $index;
@@ -790,30 +1096,6 @@ sub count
     }
 
     return $count;
-}
-
-###############################################################################
-# CPU PLAYING AI SUBS
-###############################################################################
-
-sub cpu_choose_card
-{
-    my $cpu = shift;
-
-    my @hand = @{$GAME_DATA{$cpu}{HAND}};
-    my $lead_suit = $GAME_DATA{LEADSUIT};
-
-    return 0 if ($GAME_DATA{TURN} == 1 && $hand[0] == 0); # 2 of clubs
-
-    for (0 .. $#hand)
-    {
-        my $suit = suit_of($hand[$_]);
-        return $_ if ($suit == $lead_suit);
-    }
-
-    my $size = scalar(@{$GAME_DATA{$cpu}{HAND}});
-    my $selection = int(rand($size-1)); 
-    return $selection;
 }
 
 ###############################################################################
@@ -898,6 +1180,14 @@ sub msg
     $GAME_DATA{MSGCOLOR} = "$color";
 }
 
+sub err
+{
+    print "\nFATAL: @_\n";
+    print "EXITING\n";
+    sleep 1;
+    end_game();
+}
+
 sub end_game
 {
     print "\e[H\e[2J";
@@ -948,7 +1238,8 @@ sub main
         $x     = 13 - $turn; # used to limit how far the cursor can go.
 
         # Clears screen and draws board.
-        $spaces = draw_board();
+        #$spaces = draw_board();
+        $spaces = draw_board_cheater();
 
         # Write basic info.
         print $turn_pos, "Turn: $turn";
