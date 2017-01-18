@@ -3,7 +3,7 @@
 #
 # Notes for anybody trying to read this code:
 #
-# 1. Hands are saved as arrays of numbers 0-51. See @DECK for what those cards 
+# 1. Hands are saved as arrays of numbers 0-51. See @DECK for what those cards
 #    actually are.
 #
 # 2. A bunch of data is stored in the hash GAME_DATA. It's global and basically
@@ -93,11 +93,16 @@ use constant HEARTS   => 3;
 #  |->@SUITCOUNT              Running tally of number of cards that have been
 #  |                          played in each suit. 0-13.
 #  |
+#  |->%PLAYEDCARDS            hash that tracks which cards have been played.
+#  | \-> $CARDINDEX           keys will be ints 0-51 and only exist if the card
+#  |                          has been played thus far.
+#  |
 #  \->$HANDCOUNT              The only variable that spans multiple hands, it
 #                             represents how many hands have been played.
 #
 my %GAME_DATA;
 my @PERSONS = ( 0 .. 3 );
+my @SUITS   = ( 0 .. 3 );
 my @PASS_CARDS = ();
 my @POINT_CARDS = (39..51); push(@POINT_CARDS, 36);
 
@@ -161,6 +166,8 @@ sub new_hand
 
     $GAME_DATA{SUITCOUNT} = [0, 0, 0, 0];
 
+    $GAME_DATA{PLAYEDCARDS} = ();
+
     my @shuffled = shuffle();
 
     # Give each person 13 cards and 0 points.
@@ -168,7 +175,7 @@ sub new_hand
     {
         my $start_idx = $_ * 13;
         my $end_idx = ($_+1) * 13 - 1;
-        
+
         $GAME_DATA{$_}{HAND} = ();
         my @hand = @shuffled[$start_idx..$end_idx];
         push @{$GAME_DATA{$_}{HAND}}, sort { $a <=> $b } @hand;
@@ -489,7 +496,7 @@ sub play
         # Set lead suit if this is the first card played this turn.
         if (!defined($GAME_DATA{LEADSUIT}))
         {
-            $GAME_DATA{LEADSUIT} = 
+            $GAME_DATA{LEADSUIT} =
                 suit_of(@{$GAME_DATA{&BOTTOM}{HAND}}[$selection]);
         }
 
@@ -550,6 +557,10 @@ sub play
         for (@PERSONS)
         {
             my $card = $GAME_DATA{$_}{CURRENTCARD};
+
+            # Update which cards have been played
+            my @hand = @{$GAME_DATA{$_}{HAND}};
+            $GAME_DATA{PLAYEDCARDS}{$hand[$card]} = 1;
 
             # Update counts of each suit so that CPUs can track cards played too.
             $GAME_DATA{SUITCOUNT}[suit_of(@{$GAME_DATA{$_}{HAND}}[$card])]++;
@@ -755,6 +766,16 @@ sub actually_get_passes
         splice (@hand, $highest_card, 1);
     }
 
+# uncomment lines below to view cards passed by cpus recorded to debug file.
+#my $hand_out = "";
+#my $pass_out = "";
+#for (@hand_copy) { $hand_out = "$hand_out $DECK[$_]"; }
+#for (@passes) { $pass_out = "$pass_out $DECK[$hand_copy[$_]]"; }
+#debug("cpu $player\n");
+#debug("hand: $hand_out\n");
+#debug("passes: $pass_out\n");
+#debug("");
+
     return @passes;
 }
 
@@ -789,9 +810,10 @@ sub cpu_choose_card
     # Play the highest card possible without taking power.
     if ($count)
     {
-        # If this is the first time a suit has been played, just play highest
-        # card possible. YOLO
-        if (@{$GAME_DATA{SUITCOUNT}}[suit_of($lead_suit)] == 0)
+        # If this is the first time a club or diamond has been played, just
+        # play the highest card possible.
+        if (@{$GAME_DATA{SUITCOUNT}}[suit_of($lead_suit)] == 0 && (
+            $lead_suit == CLUBS || $lead_suit == DIAMONDS))
         {
             $selection = play_highest_card($lead_suit, @hand);
         }
@@ -814,30 +836,21 @@ sub cpu_choose_card
         $selection = play_highest_card(undef, @hand);
     }
 
-
-
     return $selection;
 }
 
+# Basically just avoids power.
 sub choose_leader_card
 {
     my @hand = @_;
 
     my @values = get_values();
 
-    # Strategy: play lowest card of best suit.
+    # Base strategy: play lowest card of best suit.
     my @suit_weights = calculate_suit_weights(\@hand, \@values);
 
-    # Make sure we don't break hearts by inflating the hearts value.
-    # Note that if hearts are the only suit left, they'll get chosen.
-    $suit_weights[HEARTS] = 998 if (! $GAME_DATA{HEARTSBROKEN});
-
-    # Calculate_suit_weights sets empty suits to -999 so now we need to make
-    # sure we don't choose those...
-    for my $i (0 .. $#suit_weights)
-    {
-        $suit_weights[$i] = 999 if ($suit_weights[$i] == -999);
-    }
+    # Handle a number of edge-type situations.
+    @suit_weights = leader_weight_cases(\@hand, \@suit_weights);
 
     my $lowest_suit  = get_lowest_suit(@suit_weights);
 
@@ -872,6 +885,40 @@ sub can_avoid_power
     return 0;
 }
 
+# Handles edge cases associated with choosing a lead card.
+sub leader_weight_cases
+{
+    my $hand_ref    = shift; my @hand    = @{$hand_ref};
+    my $weights_ref = shift; my @weights = @{$weights_ref};
+
+    # Calculate_suit_weights sets empty suits to -999 so now we need to make
+    # sure we don't choose those...
+    for (@SUITS)
+    {
+        $weights[$_] = 999 if ($weights[$_] == -999);
+    }
+
+    # Make sure we don't break hearts by inflating the hearts value.
+    $weights[HEARTS] = 998 if (! $GAME_DATA{HEARTSBROKEN});
+
+    # Make sure we're not playing the last card(s) of a suit.
+    for (@SUITS)
+    {
+        my $count  = count($_, @hand);
+        my $played = ${$GAME_DATA{SUITCOUNT}}[$_];
+        my $total  = $count + $played;
+
+        if ($total == 13)
+        {
+            # Use 997 to make sure this suit doesn't supercede hearts not
+            # being broken.
+            $weights[$_] = 997;
+        }
+    }
+
+    return @weights;
+}
+
 ###############################################################################
 # AI HELPER SUBS
 ###############################################################################
@@ -890,13 +937,14 @@ sub get_values
     my $passing = $GAME_DATA{STATE} < 2 ? 1 : 0;
 
     # Base values: twos are lowest, aces are highest. High hearts are weighted
-    # more.
+    # more. Spades lower than the queen should very rarely be passed.
     #                2    3   4  5   6   7   8   9   10    J    Q    K    A
-    my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 3;
+    my @values =   (-50, -10, 0, 20, 30, 40, 60, 70, 80,  90,  100, 110, 120) x 2;
+    push (@values, (-50, -10, 0, 10, 11, 12, 13, 20, 21,  25,  200, 210, 220));
     push (@values, (-50, -10, 0, 20, 30, 40, 60, 70, 120, 130, 170, 180, 200));
 # TODO: make all spades under the queen extra low?
 
-    $values[$two_club] = 65;  # 2 of clubs isn't that good...
+    $values[$two_club] = 75;  # 2 of clubs isn't that good...
     $values[$thr_club] = -50; # 3 of clubs is...
 
     if($passing)
@@ -909,7 +957,7 @@ sub get_values
         # Passing to the right.
         elsif ($hand_mod == 2)
         {
-            $values[$que_spad] = 200; # it's most helpful when passed to the right.
+            $values[$que_spad] = 400; # it's most helpful when passed to the right.
         }
     }
     else
@@ -934,7 +982,7 @@ sub calculate_suit_weights
 
     # Get length and strength of each suit. Length is good, strength is bad.
     my @weights = (0, 0, 0, 0);
-    for (0..3)
+    for (@SUITS)
     {
         # Get the length of the suit and convert it to adjusted length.
         my $length = $length_adjustments[count($_, @hand)];
@@ -1081,7 +1129,7 @@ sub has_queen_of_spades
     return 0
 }
 
-# Super useful; returns the length of a user's suit. 
+# Super useful; returns the length of a user's suit.
 # usage: count(suit, hand), ex: count(HEARTS, @{$GAME_DATA{BOTTOM}{HAND}});
 sub count
 {
